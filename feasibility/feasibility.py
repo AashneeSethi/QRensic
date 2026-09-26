@@ -371,6 +371,12 @@ def run_experiment(input_dir: Path, output_dir: Path) -> None:
     print(f"Scanning directory: {input_dir}")
     print(f"Target output:      {output_dir}\n")
 
+    if not input_dir.exists():
+        input_dir.mkdir(parents=True, exist_ok=True)
+        print(f"[!] Input directory does not exist. Created: {input_dir}")
+        print("    Please place your 16 test photos into this folder and re-run.")
+        return
+
     valid_exts = {".jpg", ".jpeg", ".png"}
     image_files = sorted([f for f in input_dir.iterdir() if f.is_file() and f.suffix.lower() in valid_exts])
 
