@@ -144,3 +144,51 @@ python feasibility/feasibility.py --input-dir feasibility/photos --output-csv fe
 ```
 
 See [feasibility/README.md](feasibility/README.md) for full details on the physical experiment protocol, conditions, and relative specular response calculations.
+
+---
+
+## 🔬 QRensic Vision Engine Foundation
+
+The vision engine provides a deterministic, decoupled computer vision pipeline that transforms raw input images into structured forensic evidence models for downstream bounded agent reasoning:
+
+```text
+              QRensic Vision Engine
+                       │
+        ┌──────────────┼──────────────┐
+        ↓              ↓              ↓
+   Scene scan       QR analysis    Text/identity
+ (inspect_scene)   (analyze_qr)   (extract_region &
+        │              │          validate_identity)
+        └──────────────┼──────────────┘
+                       ↓
+                Surface evidence
+              (analyze_qr_surface)
+                       ↓
+              Structured Evidence
+              (StructuredEvidence)
+```
+
+### Module Breakdown (`backend/vision/`):
+* `models.py`: Structured dataclasses (`SceneEvidence`, `QREvidence`, `ExtractedRegionEvidence`, `IdentityEvidence`, `SurfaceEvidence`, `StructuredEvidence`) and state enums (`EvidenceState`, `IdentityConsistency`, `PayloadType`).
+* `inspect_scene.py`: Scene dimensions, Laplacian blur score, illumination stats, and QR/text candidate regions using OpenCV 5.
+* `analyze_qr.py`: OpenCV 5 QR detection, decoding, quad polygon bounding points, and URL/EMV/plain payload classification.
+* `extract_region.py`: Surrounding text candidate detection interface. All visual text is tagged with `is_untrusted = True` as a prompt injection defense.
+* `validate_identity.py`: Deterministic entity normalization (stripping legal suffixes and test prefixes). Personal payees are held as `AMBIGUOUS` rather than treated as automatic fraud.
+* `analyze_surface.py`: Boundary gradient strength (Sobel), edge discontinuity ratios, local texture energy, and color transition deltas across the QR perimeter and host poster ring.
+* `engine.py`: Orchestrates the sequential pipeline into a serializable `StructuredEvidence` dossier.
+* `cli.py`: Command-line interface to inspect images and export structured JSON evidence.
+
+### Running the Vision Engine CLI
+```bash
+# Analyze a test QR code with simulated poster brand text
+python -m backend.vision.cli feasibility/props/generated/genuine_qr.png --poster-text "NOVA COFFEE Pvt Ltd"
+
+# Or run directly
+python backend/vision/cli.py feasibility/props/generated/sticker_qr.png --poster-text "NOVA COFFEE"
+```
+
+### Running Automated Unit Tests
+```bash
+python -m unittest discover -s tests -p "test_*.py"
+```
+
