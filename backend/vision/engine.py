@@ -19,11 +19,18 @@ import numpy as np
 from backend.vision.analyze_qr import analyze_qr
 from backend.vision.analyze_second_view import analyze_second_view
 from backend.vision.analyze_surface import analyze_qr_surface
+from backend.vision.evidence_rules import (
+    DEFAULT_THRESHOLD_CONFIG,
+    EvidenceThresholdConfig,
+    evaluate_evidence,
+)
 from backend.vision.extract_region import extract_region
 from backend.vision.inspect_scene import inspect_scene
 from backend.vision.models import (
+    EvidenceEvaluation,
     EvidenceState,
     IdentityConsistency,
+    RecommendedAction,
     RegistrationStatus,
     SecondViewEvidence,
     StructuredEvidence,
@@ -114,33 +121,34 @@ class QRensicVisionEngine:
             else:
                 warnings.append(f"Second observation registration failed: {second_view_ev.reason}")
 
-        # 7. Preliminary Evidence State Evaluation
-        # NOTE: State interface only; strict final thresholds depend on real physical photos
-        state = EvidenceState.INCONCLUSIVE
-
-        if not qr_ev.detected or not qr_ev.decoded:
-            state = EvidenceState.INCONCLUSIVE
-        elif scene_ev.is_blurry:
-            state = EvidenceState.INCONCLUSIVE
-            warnings.append("Second clearer observation recommended due to optical blur.")
-        elif identity_ev.status == IdentityConsistency.CONTRADICTORY:
-            state = EvidenceState.HUMAN_REVIEW
-            warnings.append("Brand identity discrepancy flagged for human review.")
-        elif identity_ev.status == IdentityConsistency.AMBIGUOUS:
-            state = EvidenceState.AMBIGUOUS
-        else:
-            state = EvidenceState.CONSISTENT
-
-        return StructuredEvidence(
+        # 7. Compile Initial Structured Evidence Dossier
+        structured = StructuredEvidence(
             scene=scene_ev,
             qr=qr_ev,
             region=region_ev,
             identity=identity_ev,
             surface=surface_ev,
             second_view=second_view_ev,
-            preliminary_state=state,
             warnings=warnings,
         )
+
+        # 8. Deterministic Evidence Evaluation
+        evaluation = self.evaluate_evidence(structured)
+        structured.evaluation = evaluation
+        structured.preliminary_state = evaluation.state
+
+        return structured
+
+    def evaluate_evidence(
+        self,
+        evidence: StructuredEvidence,
+        config: Optional[EvidenceThresholdConfig] = None,
+    ) -> EvidenceEvaluation:
+        """
+        Deterministically interpret structured visual observations into an evidence state,
+        observable factual reasons, and a recommended next investigation step.
+        """
+        return evaluate_evidence(evidence, config)
 
     def analyze_second_view(
         self,

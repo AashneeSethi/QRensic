@@ -21,6 +21,13 @@ class EvidenceState(str, Enum):
     HUMAN_REVIEW = "HUMAN_REVIEW"
 
 
+class RecommendedAction(str, Enum):
+    """Recommended next investigative action for the future controller/agent."""
+    STOP = "STOP"
+    REQUEST_SECOND_VIEW = "REQUEST_SECOND_VIEW"
+    HUMAN_REVIEW = "HUMAN_REVIEW"
+
+
 class RegistrationStatus(str, Enum):
     """Status of multi-view geometric scene registration."""
     PASS = "PASS"
@@ -186,6 +193,31 @@ class SecondViewEvidence:
         return json.dumps(self.to_dict(), indent=indent)
 
 
+@dataclass
+class EvidenceEvaluation:
+    """
+    Deterministic interpretation of measured evidence.
+    
+    SAFETY NOTICE:
+    Contains observable factual evidence reasons only.
+    Does NOT calculate or output a fraud probability.
+    """
+    state: EvidenceState = EvidenceState.INCONCLUSIVE
+    recommended_next_step: RecommendedAction = RecommendedAction.REQUEST_SECOND_VIEW
+    reasons: List[str] = field(default_factory=list)
+    is_provisional_calibration: bool = True
+    signals_summary: Dict[str, str] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert EvidenceEvaluation to a native dictionary."""
+        raw = asdict(self)
+        return json.loads(json.dumps(raw, default=_enum_serializer))
+
+    def to_json(self, indent: int = 2) -> str:
+        """Serialize EvidenceEvaluation to JSON."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
 def _enum_serializer(obj: Any) -> Any:
     """Helper to convert Enum objects to their string value during serialization."""
     if isinstance(obj, Enum):
@@ -205,6 +237,7 @@ class StructuredEvidence:
     identity: IdentityEvidence = field(default_factory=IdentityEvidence)
     surface: SurfaceEvidence = field(default_factory=SurfaceEvidence)
     second_view: Optional[SecondViewEvidence] = None
+    evaluation: Optional[EvidenceEvaluation] = None
     preliminary_state: EvidenceState = EvidenceState.INCONCLUSIVE
     warnings: List[str] = field(default_factory=list)
 

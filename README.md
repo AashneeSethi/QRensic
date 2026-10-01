@@ -247,4 +247,39 @@ python backend/vision/cli_second_view.py first.jpg second.jpg
 > **Limitations & Physical Feasibility:**
 > Passing geometric unit tests confirms that ORB matching, planar homography, and projective sanity checks execute reliably on synthetic transformations. However, **physical sticker detection in real-world environments has not yet been validated**. Empirical validation will be established through the planned 16-photo physical feasibility experiment.
 
+---
+
+## ⚖️ Deterministic Evidence Engine
+
+The **Evidence Engine** (`backend/vision/evidence_rules.py`) serves as the deterministic bridge between raw computer vision metrics and downstream agent decision-making:
+
+```text
+┌────────────────────────┐      ┌─────────────────────────────┐      ┌────────────────────────────┐
+│      OpenCV 5          │ ───► │ Deterministic Evidence Engine│ ───► │   Bounded LLM Agent        │
+│ (Raw Optical Signals)  │      │ (Interprets Measurements)   │      │(Decides Next Action/Tool)  │
+└────────────────────────┘      └─────────────────────────────┘      └────────────────────────────┘
+                                               │
+                                               ▼
+                                  Observable Factual Reasons &
+                                  Recommended Next Step:
+                                  [STOP | REQUEST_SECOND_VIEW | HUMAN_REVIEW]
+```
+
+### Architectural Principles:
+1. **OpenCV produces measurements:** Boundary gradients, edge steps, color deltas, and relative specular response.
+2. **Deterministic rules interpret evidence:** Structured metrics are mapped into discrete states (`CONSISTENT`, `AMBIGUOUS`, `HIGH_RISK`, `INCONCLUSIVE`, `HUMAN_REVIEW`).
+3. **The future agent decides actions:** Decides *when* and *which* tool to call (e.g. requesting a flash or oblique re-shot).
+4. **The LLM NEVER assigns fraud risk:** Machine learning does not output speculative "fraud probability" scores.
+
+### Conservative Forensic Rules:
+* **No Premature HIGH_RISK:** An identity contradiction alone (e.g., mismatching payee name) does **NOT** produce `HIGH_RISK`. It is held as `AMBIGUOUS` or routed to `HUMAN_REVIEW` unless corroborated by an independent, strong physical surface anomaly.
+* **Personal Payee Protection:** Sole proprietorships often link personal accounts (e.g. `Ramesh Kumar` on a `Nova Coffee` poster). This is classified as `AMBIGUOUS`, never fraud.
+* **Missing Evidence $\neq$ Negative Evidence:** If physical surface signals are unavailable, the system does not assume "no anomaly found"; it reports surface evidence as `UNAVAILABLE` and recommends a second look.
+* **Conflicting Signal Handling:** If identity matches but physical surface metrics exhibit anomalous edge steps, the case is immediately routed to `HUMAN_REVIEW`.
+
+> [!WARNING]
+> **Provisional Thresholds Notice:**
+> All quantitative thresholds configured in `EvidenceThresholdConfig` (such as edge discontinuity ratios and specular RSR deltas) are **provisional development defaults**. Definitive physical thresholds will be calibrated empirically using the planned 16-photo physical feasibility dataset.
+
+
 
