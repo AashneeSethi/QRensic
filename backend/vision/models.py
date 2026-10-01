@@ -21,6 +21,13 @@ class EvidenceState(str, Enum):
     HUMAN_REVIEW = "HUMAN_REVIEW"
 
 
+class RegistrationStatus(str, Enum):
+    """Status of multi-view geometric scene registration."""
+    PASS = "PASS"
+    FAIL = "FAIL"
+    INCONCLUSIVE = "INCONCLUSIVE"
+
+
 class IdentityConsistency(str, Enum):
     """Consistency between visible poster text and QR identity."""
     CONSISTENT = "CONSISTENT"
@@ -126,6 +133,59 @@ class SurfaceEvidence:
     signals_available: List[str] = field(default_factory=list)
 
 
+@dataclass
+class SecondViewComparison:
+    """Differential surface and illumination comparison between two registered views."""
+    qr_brightness_first: float = 0.0
+    qr_brightness_second: float = 0.0
+    delta_qr_brightness: float = 0.0
+    ring_brightness_first: float = 0.0
+    ring_brightness_second: float = 0.0
+    delta_ring_brightness: float = 0.0
+    relative_specular_ratio: Optional[float] = None
+    relative_specular_diff: Optional[float] = None
+    boundary_gradient_first: float = 0.0
+    boundary_gradient_second: float = 0.0
+    delta_boundary_gradient: float = 0.0
+    texture_energy_first: float = 0.0
+    texture_energy_second: float = 0.0
+    delta_texture_energy: float = 0.0
+    color_delta_first: float = 0.0
+    color_delta_second: float = 0.0
+    delta_color_delta: float = 0.0
+    comparison_notes: str = ""
+
+
+@dataclass
+class SecondViewEvidence:
+    """
+    Structured outcome of multi-view registration and same-object validation.
+    """
+    registration_status: RegistrationStatus = RegistrationStatus.INCONCLUSIVE
+    keypoints_first: int = 0
+    keypoints_second: int = 0
+    candidate_matches: int = 0
+    good_matches: int = 0
+    homography_found: bool = False
+    ransac_inliers: int = 0
+    inlier_ratio: float = 0.0
+    geometric_sanity_passed: bool = False
+    homography_matrix: Optional[List[List[float]]] = None
+    reprojection_error: Optional[float] = None
+    registered_qr_bbox: Optional[List[List[float]]] = None
+    reason: str = ""
+    comparison: Optional[SecondViewComparison] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert SecondViewEvidence to a native dictionary."""
+        raw = asdict(self)
+        return json.loads(json.dumps(raw, default=_enum_serializer))
+
+    def to_json(self, indent: int = 2) -> str:
+        """Serialize SecondViewEvidence to JSON."""
+        return json.dumps(self.to_dict(), indent=indent)
+
+
 def _enum_serializer(obj: Any) -> Any:
     """Helper to convert Enum objects to their string value during serialization."""
     if isinstance(obj, Enum):
@@ -144,6 +204,7 @@ class StructuredEvidence:
     region: ExtractedRegionEvidence = field(default_factory=ExtractedRegionEvidence)
     identity: IdentityEvidence = field(default_factory=IdentityEvidence)
     surface: SurfaceEvidence = field(default_factory=SurfaceEvidence)
+    second_view: Optional[SecondViewEvidence] = None
     preliminary_state: EvidenceState = EvidenceState.INCONCLUSIVE
     warnings: List[str] = field(default_factory=list)
 
@@ -156,3 +217,4 @@ class StructuredEvidence:
     def to_json(self, indent: int = 2) -> str:
         """Serialize structured evidence into JSON format."""
         return json.dumps(self.to_dict(), indent=indent)
+

@@ -17,12 +17,15 @@ import cv2
 import numpy as np
 
 from backend.vision.analyze_qr import analyze_qr
+from backend.vision.analyze_second_view import analyze_second_view
 from backend.vision.analyze_surface import analyze_qr_surface
 from backend.vision.extract_region import extract_region
 from backend.vision.inspect_scene import inspect_scene
 from backend.vision.models import (
     EvidenceState,
     IdentityConsistency,
+    RegistrationStatus,
+    SecondViewEvidence,
     StructuredEvidence,
 )
 from backend.vision.validate_identity import validate_identity
@@ -98,7 +101,20 @@ class QRensicVisionEngine:
             surface_ev = analyze_qr_surface(image_input, [])
             warnings.append("Surface analysis skipped due to missing QR bounding box.")
 
-        # 6. Preliminary Evidence State Evaluation
+        # 6. Analyze Second View (if second observation provided)
+        second_view_ev: Optional[SecondViewEvidence] = None
+        if second_image_input is not None:
+            second_view_ev = analyze_second_view(
+                first_image=image_input,
+                second_image=second_image_input,
+                qr_bbox=qr_ev.bounding_box,
+            )
+            if second_view_ev.registration_status == RegistrationStatus.PASS:
+                warnings.append("Second visual observation successfully registered with initial scene.")
+            else:
+                warnings.append(f"Second observation registration failed: {second_view_ev.reason}")
+
+        # 7. Preliminary Evidence State Evaluation
         # NOTE: State interface only; strict final thresholds depend on real physical photos
         state = EvidenceState.INCONCLUSIVE
 
@@ -121,6 +137,27 @@ class QRensicVisionEngine:
             region=region_ev,
             identity=identity_ev,
             surface=surface_ev,
+            second_view=second_view_ev,
             preliminary_state=state,
             warnings=warnings,
         )
+
+    def analyze_second_view(
+        self,
+        first_image: Union[np.ndarray, str, Path],
+        second_image: Union[np.ndarray, str, Path],
+        qr_bbox: Optional[List[List[float]]] = None,
+        **kwargs: Any,
+    ) -> SecondViewEvidence:
+        """
+        Standalone second-view registration and differential evidence extraction.
+
+        Can be called independently by future agents or test harnesses.
+        """
+        return analyze_second_view(
+            first_image=first_image,
+            second_image=second_image,
+            qr_bbox=qr_bbox,
+            **kwargs,
+        )
+

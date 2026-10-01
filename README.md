@@ -192,3 +192,59 @@ python backend/vision/cli.py feasibility/props/generated/sticker_qr.png --poster
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
+---
+
+## 🔄 Second-View Registration
+
+A hallmark of **Agentic Vision** is active investigation: rather than making high-stakes decisions from a single compromised snapshot, an agentic system can request a second observation (e.g. an angled view or flash lighting) and verify visual continuity.
+
+```text
+Photo 1 (Initial View)
+      │
+      ▼
+Ambiguous / Insufficient Evidence
+      │
+      ▼
+Request Second Observation
+      │
+      ▼
+Photo 2 (Follow-up View)
+      │
+      ▼
+ORB Feature Matching & RANSAC Homography
+      │
+      ▼
+Same-Scene Verification (Geometric Sanity Checks)
+      │
+      ▼
+Transform QR Polygon & Extract Differential Surface Signals
+      │
+      ▼
+Updated Structured Evidence
+```
+
+### Key Technical Components:
+* **ORB Feature Matching:** Extracts rotation-invariant local keypoints and matches binary descriptors using Hamming distance filtered through Lowe's ratio test ($0.75$).
+* **RANSAC Homography Estimation:** Robustly estimates the planar perspective projection matrix ($H$) while rejecting outlier matches.
+* **Rigorous Same-Scene Verification:** A candidate registration is not accepted on raw feature count alone. QRensic enforces strict geometric sanity checks:
+  1. *Determinant Sign & Scale:* $\det(H_{2\times2}) > 0$ strictly prevents mirror reflections/inversions; scale limits prevent physically unviable viewing distance discrepancies.
+  2. *Projected Boundary Convexity:* Projecting scene corners must form a strictly convex, non-self-intersecting quadrilateral (`cv2.isContourConvex`).
+  3. *Area Viability:* Projected scene area must fall within realistic sensor field-of-view limits.
+  4. *Inlier Gating:* Rejects registrations with insufficient RANSAC consensus ($\text{inliers} < 15$ or inlier ratio $< 0.20$).
+* **QR Region Projection:** Projects the detected QR bounding quad from Photo 1 into Photo 2 coordinates, enabling localized surface comparisons even when perspective causes standard QR detection to miss in the second shot.
+* **Differential Evidence Extraction:** Measures changes in QR brightness, surrounding ring brightness, Relative Specular Response (RSR), boundary gradient steps, and texture energy across views.
+
+### Running Second-View Analysis CLI
+```bash
+# Register two visual observations and compute differential surface evidence
+python -m backend.vision.cli_second_view first.jpg second.jpg
+
+# Or invoke directly
+python backend/vision/cli_second_view.py first.jpg second.jpg
+```
+
+> [!IMPORTANT]
+> **Limitations & Physical Feasibility:**
+> Passing geometric unit tests confirms that ORB matching, planar homography, and projective sanity checks execute reliably on synthetic transformations. However, **physical sticker detection in real-world environments has not yet been validated**. Empirical validation will be established through the planned 16-photo physical feasibility experiment.
+
+

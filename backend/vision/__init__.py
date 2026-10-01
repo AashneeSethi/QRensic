@@ -6,6 +6,7 @@ Targeted for OpenCV AI Competition 2026.
 """
 
 from backend.vision.analyze_qr import analyze_qr
+from backend.vision.analyze_second_view import analyze_second_view
 from backend.vision.analyze_surface import analyze_qr_surface
 from backend.vision.engine import QRensicVisionEngine
 from backend.vision.extract_region import extract_region
@@ -17,7 +18,10 @@ from backend.vision.models import (
     IdentityEvidence,
     PayloadType,
     QREvidence,
+    RegistrationStatus,
     SceneEvidence,
+    SecondViewComparison,
+    SecondViewEvidence,
     StructuredEvidence,
     SurfaceEvidence,
     URLInfo,
@@ -31,6 +35,7 @@ __all__ = [
     "extract_region",
     "validate_identity",
     "analyze_qr_surface",
+    "analyze_second_view",
     "normalize_entity_name",
     "StructuredEvidence",
     "SceneEvidence",
@@ -38,6 +43,9 @@ __all__ = [
     "ExtractedRegionEvidence",
     "IdentityEvidence",
     "SurfaceEvidence",
+    "SecondViewEvidence",
+    "SecondViewComparison",
+    "RegistrationStatus",
     "URLInfo",
     "EvidenceState",
     "IdentityConsistency",
