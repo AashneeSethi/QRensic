@@ -281,5 +281,83 @@ The **Evidence Engine** (`backend/vision/evidence_rules.py`) serves as the deter
 > **Provisional Thresholds Notice:**
 > All quantitative thresholds configured in `EvidenceThresholdConfig` (such as edge discontinuity ratios and specular RSR deltas) are **provisional development defaults**. Definitive physical thresholds will be calibrated empirically using the planned 16-photo physical feasibility dataset.
 
+---
+
+## 🤖 Local Agent Orchestration Layer
+
+The **Local Agent Orchestration Layer** (`backend/agent/`) coordinates dynamic, multi-turn forensic investigation sessions before connecting to external cloud LLMs (such as AWS Bedrock).
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Agentic Investigation Loop                        │
+│                                                                        │
+│               ┌──────────────────────────────────────┐                 │
+│               │             OBSERVE                  │                 │
+│               │  Inspect optical scene quality & QR  │                 │
+│               └──────────────────┬───────────────────┘                 │
+│                                  │                                     │
+│                                  ▼                                     │
+│               ┌──────────────────────────────────────┐                 │
+│               │              DECIDE                  │                 │
+│               │ Reasoning model chooses next action  │                 │
+│               └──────────────────┬───────────────────┘                 │
+│                                  │                                     │
+│                                  ▼                                     │
+│               ┌──────────────────────────────────────┐                 │
+│               │               ACT                    │                 │
+│               │   Execute bounded CV vision tool     │                 │
+│               └──────────────────┬───────────────────┘                 │
+│                                  │                                     │
+│                                  ▼                                     │
+│               ┌──────────────────────────────────────┐                 │
+│               │            RE-OBSERVE                │                 │
+│               │ Request/register second observation  │                 │
+│               └──────────────────┬───────────────────┘                 │
+│                                  │                                     │
+│                                  ▼                                     │
+│               ┌──────────────────────────────────────┐                 │
+│               │             EVALUATE                 │                 │
+│               │ Deterministic evidence re-evaluation │                 │
+│               └──────────────────┬───────────────────┘                 │
+│                                  │                                     │
+│                                  ▼                                     │
+│               ┌──────────────────────────────────────┐                 │
+│               │       STOP / HUMAN REVIEW            │                 │
+│               │  Terminal verdict or specialist handoff│               │
+│               └──────────────────────────────────────┘                 │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Architectural Principles:
+1. **Dynamic Decision-Making, Not Static Pipelines:** The agent does not follow a hardcoded script. At each turn, it inspects the current evidence state and decides which observation to perform next.
+2. **Strict 8-Action Whitelist:** The agent may only choose from the 8 allowed forensic actions (`inspect_scene`, `analyze_qr`, `extract_region`, `validate_identity`, `analyze_qr_surface`, `request_observation`, `analyze_second_view`, `human_review`). Any unknown or prohibited action (e.g. `calculate_fraud`, `classify_fraud`, `analyze_url`) is strictly rejected without crashing.
+3. **Observable Factual Rationale:** Every agent decision requires an observable, non-empty `reason` justifying the step based strictly on visual facts—never internal or hidden chain-of-thought.
+4. **Deterministic Evidence Authority:** The agent NEVER calculates or declares fraud probabilities. The deterministic evidence engine remains the sole authority for final evidence states.
+5. **Execution Budget Guardrails:** Investigations are strictly bounded to a maximum of **5 iterations** (`MAX_AGENT_ITERATIONS = 5`). Reaching this limit triggers a safe forced escalation to `HUMAN_REVIEW`.
+6. **Graceful Tool Failure Recovery:** If a tool encounters an error or corrupted data, the orchestrator logs the failure in the trace without crashing or fabricating hallucinated values, allowing the agent to observe the error and route to human review.
+
+### Investigation Scenarios Tested with `MockModel`:
+* **Scenario A (Consistent Case):** `inspect_scene` → `analyze_qr` → `validate_identity` → `analyze_qr_surface` → Concludes investigation (`human_review` / archive) with `CONSISTENT` evidence state.
+* **Scenario B (Ambiguous Case):** Personal-name payee triggers ambiguous identity, requests oblique second observation, and safely escalates to `HUMAN_REVIEW`.
+* **Scenario C (Second-Look Hero Scenario):** Initial pass detects QR → requests flash observation → receives second image → registers views via RANSAC homography (`analyze_second_view`) → prepares multi-view differential evidence dossier.
+* **Scenario D (Tool Failure Recovery):** Simulates a tool fault; agent observes operational error in state and executes safe recovery fallback.
+* **Scenario E (Prohibited Action Injection):** Tests unauthorized action rejection; orchestrator intercepts malformed/prohibited decisions, logs `[REJECTED]` in trace, and enforces security policy.
+
+### Running the Agent CLI
+```bash
+# Run Scenario A (Consistent poster inspection)
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --scenario A --poster-text "NOVA COFFEE"
+
+# Run Scenario C (Hero Second-Look with multi-view registration)
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --second-image feasibility/props/generated/genuine_qr.png --scenario C --poster-text "NOVA COFFEE"
+
+# Run Scenario E (Security guardrail test - prohibited action rejection)
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --scenario E
+
+# Output complete investigation state as structured JSON
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --scenario A --json
+```
+
+
 
 
