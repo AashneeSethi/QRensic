@@ -13,6 +13,7 @@ from pathlib import Path
 import sys
 from typing import Optional
 
+from backend.agent.bedrock_model import BedrockModel, BedrockModelError
 from backend.agent.mock_model import MockModel
 from backend.agent.orchestrator import AgentOrchestrator
 
@@ -25,6 +26,25 @@ def main(argv: Optional[list] = None) -> int:
         "image_path",
         type=str,
         help="Path to the primary observation image.",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        choices=["mock", "bedrock"],
+        default="mock",
+        help="Reasoning model backend: 'mock' (default offline simulation) or 'bedrock' (AWS Bedrock Runtime Converse API).",
+    )
+    parser.add_argument(
+        "--bedrock-model-id",
+        type=str,
+        default=None,
+        help="Amazon Bedrock model ID (defaults to env BEDROCK_MODEL_ID or anthropic.claude-3-haiku-20240307-v1:0).",
+    )
+    parser.add_argument(
+        "--aws-region",
+        type=str,
+        default=None,
+        help="AWS region for Bedrock (defaults to env AWS_REGION or us-east-1).",
     )
     parser.add_argument(
         "--second-image",
@@ -69,14 +89,26 @@ def main(argv: Optional[list] = None) -> int:
         print(f"[ERROR] Second image not found: {second_path}", file=sys.stderr)
         return 1
 
-    # Instantiate MockModel with selected scenario and optional staged second image
-    mock_model = MockModel(
-        scenario=args.scenario,
-        second_image_source=str(second_path) if second_path else None,
-    )
+    # Instantiate reasoning model backend
+    second_source = str(second_path) if second_path else None
+    if args.model == "bedrock":
+        try:
+            model = BedrockModel(
+                model_id=args.bedrock_model_id,
+                region_name=args.aws_region,
+                second_image_source=second_source,
+            )
+        except Exception as e:
+            print(f"[ERROR] Failed to initialize Amazon Bedrock adapter: {e}", file=sys.stderr)
+            return 1
+    else:
+        model = MockModel(
+            scenario=args.scenario,
+            second_image_source=second_source,
+        )
 
     orchestrator = AgentOrchestrator(
-        model=mock_model,
+        model=model,
         default_poster_text=args.poster_text,
     )
 
@@ -104,7 +136,10 @@ def main(argv: Optional[list] = None) -> int:
     print(f"Primary Image    : {primary_path.name}")
     if second_path:
         print(f"Second Image     : {second_path.name}")
-    print(f"Scenario Tested  : Scenario {args.scenario}")
+    if args.model == "bedrock":
+        print(f"Model Backend    : Amazon Bedrock ({model.model_id} in {model.region_name})")
+    else:
+        print(f"Model Backend    : MockModel (Scenario {args.scenario})")
     print(f"Action Steps     : {state.action_count} / 5")
     print(f"Terminated       : {state.is_terminated}")
 

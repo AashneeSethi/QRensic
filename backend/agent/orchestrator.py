@@ -66,8 +66,22 @@ class AgentOrchestrator:
         threshold_config: Optional[EvidenceThresholdConfig] = None,
         default_poster_text: Optional[Union[str, List[str]]] = None,
         second_image_source: Optional[Any] = None,
+        use_bedrock: bool = False,
+        bedrock_model_id: Optional[str] = None,
+        aws_region: Optional[str] = None,
     ) -> None:
-        self.model = model or MockModel()
+        if model is not None:
+            self.model = model
+        elif use_bedrock:
+            from backend.agent.bedrock_model import BedrockModel
+
+            self.model = BedrockModel(
+                model_id=bedrock_model_id,
+                region_name=aws_region,
+                second_image_source=second_image_source,
+            )
+        else:
+            self.model = MockModel()
         self.threshold_config = threshold_config or DEFAULT_THRESHOLD_CONFIG
         self.default_poster_text = default_poster_text
         self.second_image_source = second_image_source
@@ -210,6 +224,15 @@ class AgentOrchestrator:
                     error_message=error_msg,
                 )
             )
+            if hasattr(self.model, "record_tool_result"):
+                self.model.record_tool_result(
+                    action=str(action_name),
+                    arguments=raw_decision.get("arguments", {}) if isinstance(raw_decision, dict) else {},
+                    evidence_change="None (action rejected: schema validation error)",
+                    error_message=error_msg,
+                    status="error",
+                    current_state=state.final_state.value if state.final_state else None,
+                )
             return
 
         # 4. Enforce security authorization policy
@@ -228,6 +251,15 @@ class AgentOrchestrator:
                     error_message=auth_reason,
                 )
             )
+            if hasattr(self.model, "record_tool_result"):
+                self.model.record_tool_result(
+                    action=decision.action.value,
+                    arguments=decision.arguments,
+                    evidence_change="None (action rejected: unauthorized)",
+                    error_message=auth_reason,
+                    status="error",
+                    current_state=state.final_state.value if state.final_state else None,
+                )
             return
 
         # 5. Check termination condition (human_review)
@@ -260,6 +292,15 @@ class AgentOrchestrator:
                     evidence_change=evidence_change,
                 )
             )
+            if hasattr(self.model, "record_tool_result"):
+                self.model.record_tool_result(
+                    action=decision.action.value,
+                    arguments=decision.arguments,
+                    evidence_change=evidence_change,
+                    status="success",
+                    signals_summary=state.structured_evidence.evaluation.signals_summary if state.structured_evidence.evaluation else {},
+                    current_state=state.final_state.value if state.final_state else None,
+                )
             return
 
         # 6. Execute deterministic tool handler
@@ -279,6 +320,15 @@ class AgentOrchestrator:
                     error_message=error_msg,
                 )
             )
+            if hasattr(self.model, "record_tool_result"):
+                self.model.record_tool_result(
+                    action=decision.action.value,
+                    arguments=decision.arguments,
+                    evidence_change="None (missing tool handler)",
+                    error_message=error_msg,
+                    status="error",
+                    current_state=state.final_state.value if state.final_state else None,
+                )
             return
 
         status = "SUCCESS"
@@ -314,6 +364,16 @@ class AgentOrchestrator:
                 error_message=error_msg,
             )
         )
+        if hasattr(self.model, "record_tool_result"):
+            self.model.record_tool_result(
+                action=decision.action.value,
+                arguments=decision.arguments,
+                evidence_change=evidence_change,
+                error_message=error_msg,
+                status="success" if status == "SUCCESS" else "error",
+                signals_summary=eval_result.signals_summary if eval_result else {},
+                current_state=eval_result.state.value if eval_result else None,
+            )
 
     # -------------------------------------------------------------------------
     # Tool Handlers

@@ -10,6 +10,7 @@ from backend.agent.actions import (
     AgentActionType,
     ObservationRequestType,
 )
+from backend.agent.bedrock_model import BedrockModel, BedrockModelError
 from backend.agent.mock_model import MockModel
 from backend.agent.orchestrator import AgentOrchestrator
 from backend.agent.policy import MAX_AGENT_ITERATIONS, SecurityPolicy
@@ -25,6 +26,8 @@ __all__ = [
     "ALLOWED_ACTIONS",
     "AgentActionType",
     "ObservationRequestType",
+    "BedrockModel",
+    "BedrockModelError",
     "MockModel",
     "AgentOrchestrator",
     "MAX_AGENT_ITERATIONS",

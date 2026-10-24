@@ -345,18 +345,119 @@ The **Local Agent Orchestration Layer** (`backend/agent/`) coordinates dynamic, 
 
 ### Running the Agent CLI
 ```bash
-# Run Scenario A (Consistent poster inspection)
-python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --scenario A --poster-text "NOVA COFFEE"
+# Run Scenario A (Consistent poster inspection) with MockModel
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --model mock --scenario A --poster-text "NOVA COFFEE"
 
-# Run Scenario C (Hero Second-Look with multi-view registration)
-python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --second-image feasibility/props/generated/genuine_qr.png --scenario C --poster-text "NOVA COFFEE"
+# Run Scenario C (Hero Second-Look with multi-view registration) with MockModel
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --second-image feasibility/props/generated/genuine_qr.png --model mock --scenario C --poster-text "NOVA COFFEE"
 
 # Run Scenario E (Security guardrail test - prohibited action rejection)
-python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --scenario E
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --model mock --scenario E
 
 # Output complete investigation state as structured JSON
-python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --scenario A --json
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --model mock --scenario A --json
 ```
+
+---
+
+## ☁️ Real Amazon Bedrock Integration
+
+QRensic features a production-ready model adapter (`backend/agent/bedrock_model.py`) connecting the investigation orchestrator to **Amazon Bedrock Runtime** using the **Converse API** with native tool use.
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Converse Native Tool-Use Cycle                     │
+│                                                                        │
+│   1. Agent sends conversation history + 8 toolSpecs to Bedrock Converse│
+│   2. Bedrock returns toolUse request (e.g. analyze_qr) with rationale  │
+│   3. Orchestrator validates decision via policy & schema constraints   │
+│   4. Orchestrator executes deterministic OpenCV vision tool            │
+│   5. Deterministic evidence rules re-evaluate current evidence state   │
+│   6. Orchestrator returns toolResult message block to Bedrock Converse │
+│   7. Bedrock reads toolResult and chooses next action or human_review   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Key Architectural & Safety Protections:
+* **Native Tool-Use Only:** Bedrock is restricted strictly to the 8 permitted forensic tools (`inspect_scene`, `analyze_qr`, `extract_region`, `validate_identity`, `analyze_qr_surface`, `request_observation`, `analyze_second_view`, `human_review`).
+* **Zero Fraud Probability Scoring:** The model never computes or declares fraud risk scores. The deterministic evidence engine remains the sole authority for verdicts.
+* **Standard Credential Provider Chain:** Never hardcodes credentials or API keys. Uses standard AWS provider chains (environment variables, `~/.aws/credentials`, IAM roles).
+* **Network & Timeout Bounds:** Bounded request timeouts (5s connect, 30s read) and standard retries protect against hanging sessions.
+* **Resilient Error Handling:** Throttling, network timeouts, and model errors are logged cleanly in the investigation trace with `[FAILED]` status without fabricating hallucinated evidence.
+* **Budget Gating:** Bounded at 5 iterations maximum; exceeding the budget safely escalates to `HUMAN_REVIEW`.
+
+### Environment Variables
+| Variable | Description | Default |
+|---|---|---|
+| `AWS_REGION` | AWS region where Bedrock foundation models are enabled | `us-east-1` |
+| `BEDROCK_MODEL_ID` | Model identifier supporting Converse native tool use | `anthropic.claude-3-haiku-20240307-v1:0` |
+| `AWS_ACCESS_KEY_ID` | Standard AWS IAM access key ID | *(Read from AWS credential chain)* |
+| `AWS_SECRET_ACCESS_KEY` | Standard AWS IAM secret access key | *(Read from AWS credential chain)* |
+| `AWS_SESSION_TOKEN` | Optional session token for temporary STS credentials | *(Optional)* |
+
+> [!NOTE]
+> Supported Converse models include:
+> * `anthropic.claude-3-haiku-20240307-v1:0` (fast & cost-effective)
+> * `anthropic.claude-3-5-sonnet-20240620-v1:0` / `us.anthropic.claude-3-5-sonnet-20241022-v2:0`
+> * `amazon.nova-micro-v1:0` / `amazon.nova-lite-v1:0`
+>
+> Ensure the target model is enabled in your AWS account under **Amazon Bedrock -> Model access**.
+
+### Required AWS IAM Permissions
+To invoke Amazon Bedrock models, your IAM User or Role must possess:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInvokeModelAccess",
+      "Effect": "Allow",
+      "Action": [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### Running the Bedrock Connectivity Smoke Test
+Before running live investigations, verify credential resolution and model access with the smoke-test utility:
+```bash
+# Test with default settings (us-east-1, Claude 3 Haiku)
+python scripts/bedrock_smoke_test.py
+
+# Test with a specific model or region
+python scripts/bedrock_smoke_test.py --model-id amazon.nova-micro-v1:0 --region us-east-1
+```
+The script performs a single minimal Converse probe and outputs clear, actionable diagnostic advice if credentials or model permissions are missing.
+
+### Running Live Investigations with Bedrock
+```bash
+# Run investigation using real Amazon Bedrock
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --model bedrock --poster-text "NOVA COFFEE"
+
+# Run investigation specifying a custom Bedrock model and region
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --model bedrock --bedrock-model-id anthropic.claude-3-5-sonnet-20240620-v1:0 --aws-region us-east-1 --poster-text "NOVA COFFEE"
+```
+
+### Running Offline with the Deterministic Mock Model
+No AWS account or credentials are required to develop and test QRensic. The built-in `MockModel` simulates reasoning scenarios offline:
+```bash
+# Default mock model execution
+python -m backend.agent.cli feasibility/props/generated/genuine_qr.png --model mock --scenario A
+```
+
+### Running the Complete Automated Test Suite
+Unit tests mock all Bedrock interactions and do not make external AWS calls:
+```bash
+python -m unittest discover -s tests -p "test_*.py" -v
+```
+
+### Known Limitations
+* **Provisional Physical Thresholds:** Surface gradient and specular anomaly thresholds are provisional and will be calibrated using the 16-photo physical feasibility dataset.
+* **Model Access Prerequisite:** Amazon Bedrock requires explicit model access activation via the AWS Management Console in the designated region.
 
 
 
